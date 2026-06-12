@@ -1,25 +1,90 @@
 """
+app/main.py
+
 SkillSwap — FastAPI application entry point.
+Етап 2.1: бот Aiogram 3.x запускається паралельно з FastAPI
+через asyncio.create_task у lifespan-контексті.
 """
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.core.database import engine, Base
-from app.routers import cards, users
+from app.core.database import engine
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lifespan — startup / shutdown
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
-    On startup: nothing special — migrations are handled by Alembic.
-    On shutdown: dispose the connection pool cleanly.
-    """
-    yield
-    await engine.dispose()
+    Послідовність startup:
+    1. Підключаємо роутер хендлерів до диспетчера.
+    2. Запускаємо Long Polling бота як фонову asyncio-задачу.
 
+    Послідовність shutdown:
+    1. Скасовуємо задачу бота (викликає CancelledError всередині polling).
+    2. Закриваємо HTTP-сесію бота (звільняємо з'єднання).
+    3. Закриваємо пул з'єднань SQLAlchemy.
+
+    Імпорти bot/dp/router — всередині функції, щоб уникнути circular imports
+    та щоб Settings вже були повністю ініціалізовані на момент імпорту.
+    """
+    # ── Імпорти тут, а не на рівні модуля ────────────────────────────────────
+    from app.bot.bot_instance import bot, dp
+    from app.bot.handlers import router as bot_router
+
+    # ── Startup ───────────────────────────────────────────────────────────────
+    logger.info("Підключаємо хендлери до диспетчера...")
+    dp.include_router(bot_router)
+
+    logger.info("Запускаємо Telegram Long Polling у фоні...")
+    polling_task = asyncio.create_task(
+        dp.start_polling(
+            bot,
+            skip_updates=True,   # ігноруємо повідомлення, що прийшли поки бот не працював
+            allowed_updates=dp.resolve_used_update_types(),  # тільки потрібні типи апдейтів
+        )
+    )
+
+    logger.info("SkillSwap запущено. FastAPI + Telegram Bot активні.")
+
+    # ── Передаємо керування FastAPI ───────────────────────────────────────────
+    yield
+
+    # ── Shutdown ──────────────────────────────────────────────────────────────
+    logger.info("Зупиняємо Telegram Bot...")
+    polling_task.cancel()
+
+    try:
+        await polling_task
+    except asyncio.CancelledError:
+        # Очікувана поведінка при скасуванні задачі
+        pass
+    except Exception:
+        logger.exception("Неочікувана помилка при зупинці polling")
+
+    # Закриваємо aiohttp-сесію бота — звільняємо TCP з'єднання
+    await bot.session.close()
+    logger.info("Сесію бота закрито.")
+
+    # Закриваємо пул з'єднань SQLAlchemy
+    await engine.dispose()
+    logger.info("Пул з'єднань БД закрито.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FastAPI app
+# ─────────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title=settings.APP_TITLE,
@@ -31,17 +96,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
+# ── Роутери FastAPI ───────────────────────────────────────────────────────────
+from app.routers import cards, users  # noqa: E402 — після створення app
 
 app.include_router(users.router)
 app.include_router(cards.router)
 
 
-# ---------------------------------------------------------------------------
-# Health check
-# ---------------------------------------------------------------------------
+# ── Health check ──────────────────────────────────────────────────────────────
 
 
 @app.get("/health", tags=["infra"])
