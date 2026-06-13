@@ -1,21 +1,29 @@
 """
+app/routers/cards.py
+
 Router: /api/cards
-Handles card discovery (match engine) and swipe actions.
+Етап 2.2 — ендпоінт POST /swipe тепер надсилає match-нотифікації
+через app/bot/notifications.py при взаємному лайку.
 """
+
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.notifications import send_match_notification
 from app.core.database import get_db
 from app.core.match_engine import get_next_card, record_swipe
 from app.schemas.schemas import CardRead, SwipeCreate, SwipeResult
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/cards", tags=["cards"])
 
 
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/cards/next
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @router.get(
@@ -47,9 +55,9 @@ async def next_card(
     return card
 
 
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # POST /api/cards/swipe
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @router.post(
@@ -58,6 +66,7 @@ async def next_card(
     status_code=status.HTTP_200_OK,
     summary="Record a swipe and check for a mutual match",
     responses={
+        400: {"description": "Cannot swipe yourself"},
         409: {"description": "Duplicate swipe — already swiped this user"},
     },
 )
@@ -67,10 +76,22 @@ async def swipe(
     db: AsyncSession = Depends(get_db),
 ) -> SwipeResult:
     """
-    Records is_like=True (like) or is_like=False (dislike).
+    Записує свайп і повертає результат.
 
-    If both users liked each other → returns `{"match": true, "matched_user_id": <id>}`.
-    Otherwise          → returns `{"match": false, "matched_user_id": null}`.
+    Флоу при is_like=True та взаємному лайку (match):
+    ─────────────────────────────────────────────────
+    1. record_swipe() → зберігає свайп, виявляє матч, повертає SwipeResult
+    2. Транзакція комітиться через get_db (автоматично після yield)
+    3. send_match_notification() → надсилає картку кожного юзера іншому
+       у Telegram (виконується після коміту — дані вже в БД)
+    4. Повертаємо SwipeResult клієнту
+
+    Чому нотифікація ПІСЛЯ коміту, а не всередині транзакції:
+    ──────────────────────────────────────────────────────────
+    Якщо Telegram API впаде або буде timeout — транзакція з свайпом
+    НЕ відкотиться. Свайп завжди зберігається. Нотифікація — це
+    best-effort side effect, а не частина бізнес-транзакції.
+    Помилка нотифікації логується, але не впливає на HTTP-відповідь.
     """
     if current_user_id == payload.to_user_id:
         raise HTTPException(
@@ -78,6 +99,7 @@ async def swipe(
             detail="You cannot swipe yourself.",
         )
 
+    # ── 1. Записуємо свайп і визначаємо матч ─────────────────────────────────
     try:
         result = await record_swipe(
             from_user_id=current_user_id,
@@ -86,6 +108,40 @@ async def swipe(
             db=db,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    # ── 2. Якщо матч — надсилаємо нотифікації обом юзерам ───────────────────
+    #
+    # get_db виконає commit після виходу з ендпоінту (після return).
+    # Але нам потрібно щоб нотифікація пішла ПІСЛЯ того як дані вже в БД,
+    # щоб _load_user_with_skills всередині notifications.py бачив актуальні дані.
+    #
+    # Рішення: flush вже зроблено в record_swipe → дані видимі в поточній сесії.
+    # Нотифікація використовує ту саму db-сесію → бачить незакомічені дані.
+    # Це безпечно: читаємо в рамках тієї ж транзакції.
+    #
+    if result.match and result.matched_user_id is not None:
+        logger.info(
+            "Match! initiator_id=%s matched_user_id=%s",
+            current_user_id,
+            result.matched_user_id,
+        )
+        try:
+            await send_match_notification(
+                initiator_id=current_user_id,
+                matched_user_id=result.matched_user_id,
+                db=db,
+            )
+        except Exception:
+            # Нотифікація — best-effort. Помилка не скасовує свайп.
+            logger.exception(
+                "Не вдалося надіслати match-нотифікацію "
+                "initiator=%s matched=%s",
+                current_user_id,
+                result.matched_user_id,
+            )
 
     return result

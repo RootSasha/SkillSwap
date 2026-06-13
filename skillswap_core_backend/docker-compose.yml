@@ -1,17 +1,15 @@
 version: '3.8'
 
 services:
-  # ─── СЕРВІС БАЗИ ДАНИХ ──────────────────────────────────────────────────
   skillswap_db:
     image: postgres:15-alpine
     container_name: skillswap_postgres
     restart: always
-    # Явно підтягуємо змінні з .env файлу в контейнер бази
     env_file: .env
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: skillswap
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -19,18 +17,16 @@ services:
     networks:
       - skillswap_network
 
-  # ─── СЕРВІС БЕКЕНДУ (FastAPI) ───────────────────────────────────────────
   skillswap_backend:
     build: .
     container_name: skillswap_api
     restart: always
     ports:
       - "8000:8000"
-    # Явно підтягуємо змінні з .env файлу в контейнер бекенду
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://admin:admin@skillswap_db:5432/skillswap
-      - PGPASSWORD=admin
+      - DB_HOST=skillswap_db
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@skillswap_db:5432/${POSTGRES_DB}
     depends_on:
       - skillswap_db
     networks:

@@ -1,26 +1,20 @@
 #!/bin/sh
 
-# Очікуємо, поки підніметься порт бази даних
-echo "Waiting for postgres..."
-while ! nc -z skillswap_db 5432; do
+DB_TARGET_HOST="${DB_HOST:-skillswap_db}"
+
+echo "⏳ Очікування старту PostgreSQL на хості ${DB_TARGET_HOST}:5432..."
+
+while ! nc -z "$DB_TARGET_HOST" 5432; do
   sleep 0.1
 done
-echo "PostgreSQL started"
 
-# 1. Накатуємо міграції Alembic
-echo "Running database migrations..."
+echo "✅ PostgreSQL успішно запущено!"
+
+echo "🚀 Запуск міграцій бази даних (Alembic)..."
 alembic upgrade head
 
-# 2. Заливаємо стартові скіли (ON CONFLICT DO NOTHING захищає від дублікатів при перезапуску)
-echo "Seeding initial skills..."
-PGPASSWORD=super_password123 psql -h skillswap_db -U sasha_admin -d skillswap -c "
-INSERT INTO skills (name) VALUES 
-('Python'), 
-('Figma'), 
-('React'), 
-('Copywriting') 
-ON CONFLICT (name) DO NOTHING;"
+echo "🌱 Заливка початкових навичок розробників..."
+PGPASSWORD="${POSTGRES_PASSWORD}" psql -h "$DB_TARGET_HOST" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -f /code/app/core/seed_skills.sql || echo "⚠️ Сид навичок пропущено або дані вже є"
 
-# 3. Запускаємо сам FastAPI
-echo "Starting FastAPI server..."
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+echo "🔥 Запуск сервера FastAPI + aiogram бота..."
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000
