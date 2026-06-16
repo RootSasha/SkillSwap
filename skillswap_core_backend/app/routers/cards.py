@@ -55,6 +55,33 @@ async def next_card(
     return card
 
 
+
+@router.get("/matches", response_model=list[CardRead])
+async def get_matches(
+    current_user_id: int = Query(..., gt=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[CardRead]:
+    """Повертає список юзерів з якими є взаємний лайк."""
+    stmt = (
+        select(User)
+        .join(Swipe, Swipe.to_user_id == User.id)
+        .where(
+            Swipe.from_user_id == current_user_id,
+            Swipe.is_like.is_(True),
+            exists(
+                select(Swipe.id).where(
+                    Swipe.from_user_id == User.id,
+                    Swipe.to_user_id == current_user_id,
+                    Swipe.is_like.is_(True),
+                )
+            ),
+        )
+        .options(selectinload(User.user_skills).selectinload(UserSkill.skill))
+    )
+    result = await db.execute(stmt)
+    users = result.scalars().all()
+    return [_build_card(u) for u in users]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/cards/swipe
 # ─────────────────────────────────────────────────────────────────────────────

@@ -46,6 +46,8 @@ export interface TelegramWebApp {
   close: () => void
   showAlert: (message: string) => void
   showConfirm: (message: string, callback: (confirmed: boolean) => void) => void
+  // Відкриває посилання нативно всередині Telegram (без виходу в браузер)
+  openTelegramLink: (url: string) => void
   HapticFeedback: {
     impactOccurred: (style: 'light' | 'medium' | 'heavy') => void
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void
@@ -107,6 +109,22 @@ export interface SwipeResult {
   recorded: boolean
   match: boolean
   matched_user_id: number | null
+}
+
+/**
+ * Юзер з яким стався взаємний матч.
+ * Відповідь GET /api/cards/matches — масив таких об'єктів.
+ * offers/seeks — масиви рядків (назви навичок), як у Card.
+ */
+export interface MatchedUser {
+  id: number
+  username: string | null
+  first_name: string
+  bio: string | null
+  rating: number
+  karma_balance: number
+  offers: string[]
+  seeks: string[]
 }
 
 /** Payload для оновлення навичок */
