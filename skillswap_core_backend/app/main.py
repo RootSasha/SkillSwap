@@ -4,6 +4,8 @@ app/main.py
 SkillSwap — FastAPI application entry point.
 Етап 2.1: бот Aiogram 3.x запускається паралельно з FastAPI
 через asyncio.create_task у lifespan-контексті.
+
+ВИПРАВЛЕНО: Додано налаштування CORSMiddleware для запобігання CORS-блокувань.
 """
 
 import asyncio
@@ -12,6 +14,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine
@@ -52,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         dp.start_polling(
             bot,
             skip_updates=True,   # ігноруємо повідомлення, що прийшли поки бот не працював
-            allowed_updates=dp.resolve_used_update_types(),  # тільки потрібні типи апдейтів
+            allowed_updates=dp.resolve_used_update_types(),  # тільки потрібні типу апдейтів
         )
     )
 
@@ -96,6 +99,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Налаштування CORS (Додано) ────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Дозволяємо запити з будь-яких доменів/портів під час девелопменту
+    allow_credentials=True,
+    allow_methods=["*"],  # Дозволяємо всі HTTP методи (GET, POST, PUT, DELETE тощо)
+    allow_headers=["*"],  # Дозволяємо всі HTTP заголовки
+)
+
 # ── Роутери FastAPI ───────────────────────────────────────────────────────────
 from app.routers import cards, users  # noqa: E402 — після створення app
 
@@ -104,7 +116,6 @@ app.include_router(cards.router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
-
 
 @app.get("/health", tags=["infra"])
 async def health() -> dict:

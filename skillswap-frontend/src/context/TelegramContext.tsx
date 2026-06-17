@@ -6,7 +6,7 @@ const TelegramContext = createContext<TelegramContextValue | undefined>(undefine
 
 // Константа для фейкового юзера в браузері (щоб розробка була зручною)
 const DEV_USER: TelegramUser = {
-  id: 3, // Твій реальний або тестовий telegram_id
+  id: 1, // Твій реальний або тестовий telegram_id
   first_name: 'Sasha (Dev)',
   username: 'sasha_dev'
 }

@@ -9,7 +9,7 @@ import type {
   UserSkillsUpdate,
 } from '../types'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
+const BASE_URL = 'http://13.60.49.244:8000/api';
 
 function createApiClient(userId: number): AxiosInstance {
   const client = axios.create({
