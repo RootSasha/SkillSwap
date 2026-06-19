@@ -10,12 +10,12 @@ export default defineConfig({
   base: '/',
 
   server: {
-    port: 5173,
-    // Проксі для локальної розробки — щоб уникнути CORS при запитах до бекенду
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
+  port: 5173,
+  allowedHosts: ['http://13.60.49.244:5173/'],  // ← add this line
+  proxy: {
+    '/api': {
+      target: 'http://localhost:8000',
+      changeOrigin: true,
       },
     },
   },

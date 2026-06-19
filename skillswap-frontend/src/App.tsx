@@ -38,7 +38,7 @@ function UnavailableScreen() {
 
         {/* Посилання на бота */}
         <a
-          href="https://t.me/your_skillswap_bot"  // ← замінити на реального бота
+          href="skillswap.ngrok-free.app"  // ← замінити на реального бота
           className="inline-block mt-2 px-6 py-3 bg-brand-primary text-white font-semibold rounded-2xl shadow-lg hover:bg-brand-primary/90 transition-colors"
         >
           Відкрити в Telegram →

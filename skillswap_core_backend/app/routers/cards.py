@@ -67,12 +67,24 @@ async def get_matches(
     db: AsyncSession = Depends(get_db),
 ) -> list[CardRead]:
     """Повертає список юзерів з якими є взаємний лайк."""
+    # ВИПРАВЛЕНО: прибрано .join(Swipe, ...) у головному select(User).
+    # Раніше JOIN на Swipe у поєднанні з selectinload(User.user_skills)
+    # змушував SQLAlchemy 2.x вимагати викликати .unique() на результаті
+    # (бо JOIN потенційно дублює рядки User) — без цього виклику
+    # result.scalars().all() кидав InvalidRequestError, що проявлялось
+    # як 500 Internal Server Error на /api/cards/matches.
+    # Тепер фільтрація йде виключно через два корельовані EXISTS-підзапити,
+    # тож головний SELECT повертає по одному рядку на User і JOIN не потрібен.
     stmt = (
         select(User)
-        .join(Swipe, Swipe.to_user_id == User.id)
         .where(
-            Swipe.from_user_id == current_user_id,
-            Swipe.is_like.is_(True),
+            exists(
+                select(Swipe.id).where(
+                    Swipe.from_user_id == current_user_id,
+                    Swipe.to_user_id == User.id,
+                    Swipe.is_like.is_(True),
+                )
+            ),
             exists(
                 select(Swipe.id).where(
                     Swipe.from_user_id == User.id,
@@ -84,7 +96,7 @@ async def get_matches(
         .options(selectinload(User.user_skills).selectinload(UserSkill.skill))
     )
     result = await db.execute(stmt)
-    users = result.scalars().all()
+    users = result.scalars().unique().all()
     return [_build_card(u) for u in users]
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/cards/swipe
