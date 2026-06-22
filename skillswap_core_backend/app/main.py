@@ -99,10 +99,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Налаштування CORS (Додано) ────────────────────────────────────────────────
+# ── Налаштування CORS (Виправлено для сумісності з Telegram WebView) ─────────
+# ВАЖЛИВО: allow_origins=["*"] разом з allow_credentials=True — невалідна
+# комбінація за специфікацією CORS. Браузер/WebView має право ІГНОРУВАТИ
+# wildcard "*", якщо запит містить credentials, і вимагає від сервера
+# повернути конкретний Origin замість "*". У звичайному Chrome це часто
+# "прощалось", але Telegram WebView (особливо на iOS) суворіший і саме
+# тут міг ловити "No Access-Control-Allow-Origin" навіть коли CORS
+# виглядав налаштованим правильно.
+#
+# Рішення: allow_origin_regex покриває localhost (будь-який порт, для Vite
+# дев-сервера), будь-яку IP-адресу (поточний сервер) і всі домени
+# *.trycloudflare.com (тимчасові HTTPS-тунелі для тестування в Telegram).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Дозволяємо запити з будь-яких доменів/портів під час девелопменту
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+                        r"|https?://\d+\.\d+\.\d+\.\d+(:\d+)?"
+                        r"|https://[a-zA-Z0-9-]+\.trycloudflare\.com",
     allow_credentials=True,
     allow_methods=["*"],  # Дозволяємо всі HTTP методи (GET, POST, PUT, DELETE тощо)
     allow_headers=["*"],  # Дозволяємо всі HTTP заголовки

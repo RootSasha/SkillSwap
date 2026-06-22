@@ -9,7 +9,16 @@ import type {
   UserSkillsUpdate,
 } from '../types'
 
-const BASE_URL = 'http://13.60.49.244:8000/api';
+// ВАЖЛИВО для Telegram Mini App: Telegram WebView вимагає HTTPS і блокує
+// "mixed content" — запити з https-сторінки на http-адресу.
+//
+// РІШЕННЯ: використовуємо відносний шлях '/api' замість абсолютного URL.
+// Vite dev-сервер має proxy для '/api' -> http://localhost:8000 (див.
+// vite.config.ts), тож браузер бачить запит як same-origin відносно
+// сторінки (того самого ngrok/cloudflare https-тунелю) — взагалі без
+// CORS і без mixed content, і без потреби піднімати окремий тунель
+// для backend.
+const BASE_URL = '/api';
 
 function createApiClient(userId: number): AxiosInstance {
   const client = axios.create({

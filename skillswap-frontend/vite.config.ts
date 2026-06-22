@@ -10,12 +10,21 @@ export default defineConfig({
   base: '/',
 
   server: {
-  port: 5173,
-  allowedHosts: ['http://13.60.49.244:5173/'],  // ← add this line
-  proxy: {
-    '/api': {
-      target: 'http://localhost:8000',
-      changeOrigin: true,
+    port: 5173,
+    // host: true — слухати на 0.0.0.0, а не лише localhost, інакше ngrok/
+    // cloudflare тунель не може достукатись до dev-сервера ззовні контейнера/VM.
+    host: true,
+    // Vite 5+ за замовчуванням блокує запити з невідомим Host-заголовком
+    // (захист від DNS rebinding) — саме це й давало 403 "Blocked request.
+    // This host is not allowed" для ngrok/trycloudflare доменів.
+    // true вимикає перевірку повністю (ОК для тестового тунелю; для прод
+    // деплою краще перелічити конкретні домени масивом замість true).
+    allowedHosts: true,
+    // Проксі для локальної розробки — щоб уникнути CORS при запитах до бекенду
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
       },
     },
   },
