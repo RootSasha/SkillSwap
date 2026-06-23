@@ -1,0 +1,41 @@
+/* Tailwind CSS directives — обов'язкові, не видаляти */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Базові стилі для TMA */
+@layer base {
+  html, body, #root {
+    /* Займаємо весь viewport Telegram */
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    /* Колір фону береться з Telegram theme якщо доступний */
+    background-color: var(--tg-theme-bg-color, #ffffff);
+    color: var(--tg-theme-text-color, #000000);
+    /* Вимикаємо виділення тексту — типова поведінка для мобільних додатків */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Вимикаємо тап-хайлайт на iOS */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Дозволяємо виділення тексту в полях вводу */
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+@layer utilities {
+  /* Утиліта для safe area на пристроях з notch */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
