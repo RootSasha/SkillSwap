@@ -1,0 +1,78 @@
+version: '3.9'
+
+services:
+  skillswap_db:
+    image: postgres:15-alpine
+    container_name: skillswap_postgres
+    restart: always
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - skillswap_network
+
+  # Крок 4.2 дорожньої карти. Контейнер готовий до використання (кешування
+  # списку навичок, rate-limiting, сесії тощо), але backend наразі НЕ
+  # звертається до нього — у requirements.txt немає redis-клієнта,
+  # і жоден ендпоінт його не імпортує. Це навмисно: краще піднятий і
+  # порожній сервіс, ніж жорстка залежність на бібліотеці, якою ще
+  # ніхто не користується. Коли з'явиться код, що реально читає/пише
+  # в Redis — додай `redis` у requirements.txt і REDIS_HOST=skillswap_redis
+  # у .env backend.
+  skillswap_redis:
+    image: redis:7-alpine
+    container_name: skillswap_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - skillswap_network
+
+  skillswap_backend:
+    build: .
+    container_name: skillswap_api
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DB_HOST=skillswap_db
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@skillswap_db:5432/${POSTGRES_DB}
+    depends_on:
+      - skillswap_db
+      - skillswap_redis
+    networks:
+      - skillswap_network
+
+  skillswap_frontend:
+    # Шлях до сусідньої папки skillswap-frontend (на одному рівні
+    # з skillswap_core_backend, де лежить цей docker-compose.yml).
+    build:
+      context: ../skillswap-frontend
+    container_name: skillswap_web
+    restart: always
+    ports:
+      # 80 контейнера -> 5173 хоста, щоб не конфліктувати з тим, що
+      # раніше слухав Vite dev-server (теж 5173). Зміни порт хоста,
+      # якщо у тебе вже стоїть Nginx/Reverse Proxy на 80/443 рівні вище.
+      - "5173:80"
+    depends_on:
+      - skillswap_backend
+    networks:
+      - skillswap_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  skillswap_network:
+    driver: bridge
